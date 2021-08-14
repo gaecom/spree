@@ -5,7 +5,11 @@ module Spree
         include Spree::Api::V2::CollectionOptionsHelpers
 
         def index
-          render_serialized_payload { serialize_collection(paginated_collection) }
+          render_serialized_payload do
+            Rails.cache.fetch(collection_cache_key, expires_in: 5.minutes) do
+              serialize_collection(paginated_collection)
+            end
+          end
         end
 
         def show
@@ -13,6 +17,21 @@ module Spree
         end
 
         protected
+
+        def collection_cache_key
+          @collection_cache_key ||= [
+            model_class,
+            (paginated_collection.unscope(:includes).unscope(:order).maximum(:updated_at) || Time.current),
+            paginated_collection.unscope(:includes).unscope(:order).ids.join('-'),
+            resource_includes,
+            sparse_fields,
+            serializer_params,
+            params[:sort],
+            params[:page],
+            params[:per_page],
+            '1'
+          ].flatten.join('-')
+        end
 
         def sorted_collection
           @sorted_collection ||= collection_sorter.new(collection, params, allowed_sort_attributes).call
